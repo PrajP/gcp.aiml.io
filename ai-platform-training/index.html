@@ -1,0 +1,394 @@
+
+<!doctype html>
+
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+  <meta name="theme-color" content="#4F7DC9">
+  <meta charset="UTF-8">
+  <title>AI Platform Notebooks Training</title>
+  <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Source+Code+Pro:400|Roboto:400,300,400italic,500,700|Roboto+Mono">
+  <link rel="stylesheet" href="//fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://storage.googleapis.com/codelab-elements/codelab-elements.css">
+  <style>
+    .success {
+      color: #1e8e3e;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <google-codelab-analytics gaid="UA-49880327-14"></google-codelab-analytics>
+  <google-codelab codelab-gaid=""
+                  id="ai-platform-training"
+                  title="AI Platform Notebooks Training"
+                  environment="web"
+                  feedback-link="https://github.com/googlecodelabs/ai-platform-training/issues">
+    
+      <google-codelab-step label="Introduction" duration="0">
+        <p>In this lab, you&#39;ll get familiar with various features in <a href="https://cloud.google.com/ai-platform/" target="_blank">Google Cloud AI Platform</a>.</p>
+<p><a href="https://cloud.google.com/ai-platform-notebooks/" target="_blank">AI Platform Notebooks</a> provides a managed Jupyter experience and so you don&#39;t need to run notebook servers yourself. AI Platform Notebooks is well integrated with other GCP services like Big Query and Google Cloud Storage which makes it quick and simple to start your Data Analytics and ML journey on Google Cloud Platform.</p>
+<aside class="special"><p>Note: This codelab uses HIPAA certified AI Platform Notebooks.</p>
+</aside>
+<h2 is-upgraded><strong>Y</strong><strong>ou&#39;ll learn how to</strong></h2>
+<ul>
+<li>Train model on AI Platform Training.</li>
+<li>Run hyperparameter tuning jobs.</li>
+<li>Deploy model on AI Platform Prediction.</li>
+</ul>
+<h2 is-upgraded><strong>What you&#39;ll need</strong></h2>
+<p>To complete this lab, you need:</p>
+<ul>
+<li>A project on Google Cloud Platform</li>
+</ul>
+<p>If you don&#39;t have a GCP Project, follow <a href="https://cloud.google.com/resource-manager/docs/creating-managing-projects" target="_blank">these steps</a> to create a new GCP Project.</p>
+<p>This codelab is focused on AI Platform Notebooks. Non-relevant concepts and code blocks are glossed over and are provided for you to simply copy and paste.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Train model on AI Platform Training" duration="0">
+        <h2 is-upgraded>Step 1: Create a folder to save the training script. </h2>
+<pre><code>TRAIN_IMAGE_FOLDER = &#39;train_image&#39;
+os.makedirs(TRAIN_IMAGE_FOLDER, exist_ok=True)</code></pre>
+<h2 is-upgraded>Step 2: Write the training script</h2>
+<pre><code>%%writefile {TRAIN_IMAGE_FOLDER}/train.py
+
+# Copyright 2019 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the &#34;License&#34;);
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#            http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an &#34;AS IS&#34; BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import os
+import subprocess
+import sys
+
+import fire
+import pickle
+import numpy as np
+import pandas as pd
+import json
+
+import hypertune
+from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import SGDClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.impute import SimpleImputer
+from sklearn.decomposition import PCA
+from sklearn.utils.class_weight import compute_class_weight
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
+from sklearn.metrics import confusion_matrix
+
+from googleapiclient import discovery
+from googleapiclient import errors
+
+
+def train_evaluate(job_dir, training_dataset_path, n_estimators, max_leaf_nodes, max_depth, min_samples_split, max_features, 
+                   class_weight, bootstrap, hptune):
+    data = pd.read_excel(training_dataset_path,sheet_name=&#39;data&#39;)
+    meta_data = pd.read_excel(training_dataset_path, sheet_name=&#39;meta data&#39;)
+    
+    numeric_vars = ((data.dtypes == &#39;float64&#39;) | (data.dtypes == &#39;int64&#39;)) &amp; (meta_data[&#39;variable type&#39;] == &#39;independent&#39;).values
+    numeric_x_data = data[data.columns[numeric_vars]]
+
+    model_target = &#39;Run_Performance&#39;
+    y_data = data[[model_target]] 
+    meta_data = meta_data.set_index(&#39;name&#39;)
+ 
+
+    #maintain class balance
+    X_train, X_test, y_train, y_test = train_test_split(numeric_x_data, y_data, test_size=0.25, stratify = y_data[model_target], random_state=42)
+
+    #split train set to create a pseudo test or validation dataset
+    X_train, X_validate, y_train, y_validate = train_test_split(X_train, y_train, test_size=0.33, stratify= y_train[model_target], random_state=42)
+    
+if not hptune:
+        X_train = pd.concat([X_train, X_validate])
+        y_train = pd.concat([y_train, y_validate])
+
+    #impute missing with median
+    imputer = SimpleImputer(missing_values=np.nan, strategy=&#39;median&#39;)
+    #auto scale
+    scaler = StandardScaler()
+    
+     # Simple hyperparameter tuning for random forest model
+    estimator = RandomForestClassifier(random_state = 42)
+    
+     
+    pipe = Pipeline([(&#39;imputer&#39;,imputer),
+                     (&#39;scaler&#39;, scaler),
+                     (&#39;rfclassifier&#39;, estimator)
+                    ])
+    
+    
+    pipe.set_params(rfclassifier__n_estimators=n_estimators, rfclassifier__max_leaf_nodes=max_leaf_nodes, rfclassifier__max_depth=max_depth,
+                       rfclassifier__min_samples_split=min_samples_split, rfclassifier__max_features=max_features, 
+                       rfclassifier__class_weight=class_weight, rfclassifier__bootstrap=bootstrap )
+    pipe.fit(X_train, y_train)
+    
+    if hptune:
+        accuracy = pipe.score(X_validate, y_validate)
+        print(&#39;Model accuracy: {}&#39;.format(accuracy))
+        # Log it with hypertune
+        hpt = hypertune.HyperTune()
+        hpt.report_hyperparameter_tuning_metric(
+          hyperparameter_metric_tag=&#39;accuracy&#39;,
+          metric_value=accuracy
+        )
+ # Save the model
+    if not hptune:
+        model_filename = &#39;model.pkl&#39;
+        with open(model_filename, &#39;wb&#39;) as model_file:
+            pickle.dump(pipe, model_file)
+        gcs_model_path = &#34;{}/{}&#34;.format(job_dir, model_filename)
+        subprocess.check_call([&#39;gsutil&#39;, &#39;cp&#39;, model_filename, gcs_model_path], stderr=sys.stdout)
+        print(&#34;Saved model in: {}&#34;.format(gcs_model_path)) 
+    
+if __name__ == &#34;__main__&#34;:
+    fire.Fire(train_evaluate)</code></pre>
+<h2 is-upgraded>Step 3: Package the script into a docker image. </h2>
+<pre><code>%%writefile {TRAIN_IMAGE_FOLDER}/Dockerfile
+
+FROM gcr.io/deeplearning-platform-release/base-cpu
+RUN pip install -U fire cloudml-hypertune scikit-learn==0.20.4 pandas==0.24.2
+WORKDIR /app
+COPY train.py .
+
+ENTRYPOINT [&#34;python&#34;, &#34;train.py&#34;]</code></pre>
+<h2 is-upgraded>Step 4: Build the docker image </h2>
+<pre><code>IMAGE_NAME=&#39;trainer_image&#39;
+IMAGE_TAG=&#39;latest&#39;
+TRAINER_IMAGE=&#39;gcr.io/{}/{}:{}&#39;.format(PROJECT_ID, IMAGE_NAME,IMAGE_TAG)</code></pre>
+<pre><code>!gcloud builds submit --tag $TRAINER_IMAGE $TRAIN_IMAGE_FOLDER</code></pre>
+<p>This step takes some time. </p>
+<p>It builds and uploads the training image on the container registry ... </p>
+<p>Check out the image .. </p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Run hyperparameter tuning jobs" duration="0">
+        <p>Since the training run on this dataset is computationally expensive you can benefit from running a distributed hyperparameter tuning job on AI Platform Training.</p>
+<h2 is-upgraded>Step 1: Create the hyperparameter configuration file</h2>
+<p>Recall that the training code uses SGDClassifier. The training application has been designed to accept two hyperparameters that control SGDClassifier:</p>
+<p>The below file configures AI Platform hypertuning to run up to 3 trials on up to three nodes and to choose from the values (continuous, discrete as well as categorical) for the hyperparameters for random forest classifier model. </p>
+<pre><code>%%writefile {TRAIN_IMAGE_FOLDER}/hptuning_config.yaml
+
+# Copyright 2019 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the &#34;License&#34;);
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#            http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an &#34;AS IS&#34; BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+trainingInput:
+  hyperparameters:
+    goal: MAXIMIZE
+    maxTrials: 4
+    maxParallelTrials: 4
+    hyperparameterMetricTag: accuracy
+    enableTrialEarlyStopping: TRUE 
+    algorithm: RANDOM_SEARCH
+    params:
+    - parameterName: n_estimators
+      type: INTEGER
+      minValue:  10
+      maxValue:  200
+      scaleType: UNIT_LINEAR_SCALE
+    - parameterName: max_leaf_nodes
+      type: INTEGER
+      minValue:  10
+      maxValue:  500
+      scaleType: UNIT_LINEAR_SCALE    
+    - parameterName: max_depth
+      type: INTEGER
+      minValue:  3
+      maxValue:  20
+      scaleType: UNIT_LINEAR_SCALE
+    - parameterName: min_samples_split
+      type: DISCRETE
+      discreteValues: [
+          2,
+          5,
+          10
+      ]
+    - parameterName: max_features
+      type: DOUBLE
+      minValue: 0.5
+      maxValue: 1.0
+      scaleType: UNIT_LINEAR_SCALE
+    - parameterName: class_weight
+      type: CATEGORICAL
+      categoricalValues: [
+          &#34;balanced&#34;,
+          &#34;balanced_subsample&#34;
+      ]
+    - parameterName: bootstrap
+      type: CATEGORICAL
+      categoricalValues: [
+          &#34;TRUE&#34;,
+          &#34;FALSE&#34;
+      ]</code></pre>
+<h2 is-upgraded>Step 2: Start the hyperparameter tuning job </h2>
+<p>Use the gcloud command to start the hyperparameter tuning job.</p>
+<pre><code>JOB_NAME = &#34;JOB_{}&#34;.format(time.strftime(&#34;%Y%m%d_%H%M%S&#34;))
+JOB_DIR = &#34;{}/{}&#34;.format(JOB_DIR_ROOT, JOB_NAME)
+SCALE_TIER = &#34;BASIC&#34;
+
+!gcloud ai-platform jobs submit training $JOB_NAME \
+--region=$REGION \
+--job-dir=$JOB_DIR \
+--master-image-uri=$TRAINER_IMAGE \
+--scale-tier=$SCALE_TIER \
+--config $TRAIN_IMAGE_FOLDER/hptuning_config.yaml \
+-- \
+--training_dataset_path=$INPUT_FILE \
+--hptune</code></pre>
+<p>At this point your hyper parameter tuning job is running on AI Platform. </p>
+<p>Check job status on console by going to AI Platform-&gt; Jobs</p>
+<p>You can monitor the job:</p>
+<pre><code>!gcloud ai-platform jobs describe $JOB_NAME</code></pre>
+<p>Or stream logs:</p>
+<pre><code>!gcloud ai-platform jobs stream-logs $JOB_NAME</code></pre>
+<h2 is-upgraded>Step 3: Retrieve HP tuning results </h2>
+<p>After the job completes you can review the results using GCP Console or programmatically by calling the AI Platform Training REST end-point.</p>
+<pre><code>ml = discovery.build(&#39;ml&#39;, &#39;v1&#39;)
+
+job_id = &#39;projects/{}/jobs/{}&#39;.format(PROJECT_ID, JOB_NAME)
+request = ml.projects().jobs().get(name=job_id)
+
+try:
+    response = request.execute()
+except errors.HttpError as err:
+    print(err)
+except:
+    print(&#34;Unexpected error&#34;)
+    
+response</code></pre>
+<p>The returned run results are sorted by a value of the optimization metric. The best run is the first item on the returned list.</p>
+<pre><code>response[&#39;trainingOutput&#39;][&#39;trials&#39;][0]</code></pre>
+<h2 is-upgraded>Step 4 : Retrain the model with the best hyperparameters</h2>
+<p>Configure and run the training job </p>
+<pre><code>max_depth = response[&#39;trainingOutput&#39;][&#39;trials&#39;][0][&#39;hyperparameters&#39;][&#39;max_depth&#39;]
+n_estimators = response[&#39;trainingOutput&#39;][&#39;trials&#39;][0][&#39;hyperparameters&#39;][&#39;n_estimators&#39;]
+max_leaf_nodes = response[&#39;trainingOutput&#39;][&#39;trials&#39;][0][&#39;hyperparameters&#39;][&#39;max_leaf_nodes&#39;]
+min_samples_split = response[&#39;trainingOutput&#39;][&#39;trials&#39;][0][&#39;hyperparameters&#39;][&#39;min_samples_split&#39;]
+max_features = response[&#39;trainingOutput&#39;][&#39;trials&#39;][0][&#39;hyperparameters&#39;][&#39;max_features&#39;]
+class_weight = response[&#39;trainingOutput&#39;][&#39;trials&#39;][0][&#39;hyperparameters&#39;][&#39;class_weight&#39;]
+bootstrap = response[&#39;trainingOutput&#39;][&#39;trials&#39;][0][&#39;hyperparameters&#39;][&#39;bootstrap&#39;]</code></pre>
+<p>Notice the setting --nohptune in the following command.  </p>
+<pre><code>JOB_NAME = &#34;JOB_{}&#34;.format(time.strftime(&#34;%Y%m%d_%H%M%S&#34;))
+JOB_DIR = &#34;{}/{}&#34;.format(JOB_DIR_ROOT, JOB_NAME)
+SCALE_TIER = &#34;BASIC&#34;
+
+!gcloud ai-platform jobs submit training $JOB_NAME \
+--region=$REGION \
+--job-dir=$JOB_DIR \
+--master-image-uri=$TRAINER_IMAGE \
+--scale-tier=$SCALE_TIER \
+-- \
+--training_dataset_path=$INPUT_FILE \
+--max_depth=$max_depth \
+--n_estimators=$n_estimators \
+--max_leaf_nodes=$max_leaf_nodes \
+--min_samples_split=$min_samples_split \
+--max_features=$max_features \
+--class_weight=$class_weight \
+--bootstrap=$bootstrap \
+--nohptune</code></pre>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Deploy model on AI Platform Prediction" duration="0">
+        <h2 is-upgraded>Step 1: Create a model resource</h2>
+<pre><code>REGION = &#39;us-central1&#39;
+model_name = &#39;&lt;model_name&gt;&#39; ## for eg:  &#39;amyris_workshop&#39;
+labels = &#34;task=classifier,domain=biotech&#34;
+filter = &#39;name:{}&#39;.format(model_name)
+models = !(gcloud ai-platform models list --filter={filter} --format=&#39;value(name)&#39;)
+if len(models) ==1:
+    !gcloud ai-platform models create  $model_name \
+        --regions=$REGION \
+        --labels=$labels
+else:
+    print(&#34;Model: {} already exists.&#34;.format(models[1]))
+
+</code></pre>
+<h2 is-upgraded>Step 2: Create a model version </h2>
+<pre><code>model_version = &#39;v01&#39;
+filter = &#39;name:{}&#39;.format(model_version)
+versions = !(gcloud ai-platform versions list --model={model_name} --format=&#39;value(name)&#39; --filter={filter})
+
+if len(versions) ==1:
+    !gcloud ai-platform versions create {model_version} \
+        --model={model_name} \
+        --origin=$JOB_DIR \
+        --runtime-version=1.15 \
+        --framework=scikit-learn \
+        --python-version=3.7
+else:
+    print(&#34;Model version: {} already exists.&#34;.format(versions[1]))</code></pre>
+<p>Check that model is created in AI Platform-&gt;models</p>
+<pre><code>!(gcloud ai-platform models list)</code></pre>
+<h2 is-upgraded>Step 3: Prepare input file with json formatted instances </h2>
+<pre><code>input_file = &#39;serving_instances.json&#39;
+
+with open(input_file, &#39;w&#39;) as f:
+    for index, row in X_validate.head().iterrows():
+        f.write(json.dumps(list(row.values)))
+        f.write(&#39;\n&#39;)</code></pre>
+<pre><code>!cat $input_file</code></pre>
+<h2 is-upgraded>Step 4: Invoke the model </h2>
+<pre><code>!gcloud ai-platform predict \
+--model $model_name \
+--version $model_version \
+--json-instances $input_file</code></pre>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Congrats!" duration="0">
+        <p>You&#39;ve done a lot in this lab 👏👏👏</p>
+<p>To recap, you&#39;ve learned how to:</p>
+<ul>
+<li>Train a model on AI Platform Training.</li>
+<li>Run hyperparameter tuning jobs.</li>
+<li>Deploy a model on AI Platform Prediction.</li>
+</ul>
+
+
+      </google-codelab-step>
+    
+  </google-codelab>
+
+  <script src="https://storage.googleapis.com/codelab-elements/native-shim.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/custom-elements.min.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/prettify.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/codelab-elements.js"></script>
+  <script src="//support.google.com/inapp/api.js"></script>
+
+</body>
+</html>

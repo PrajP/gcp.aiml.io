@@ -1,0 +1,25 @@
+{
+  "environment": "web",
+  "format": "html",
+  "prefix": "https://storage.googleapis.com",
+  "mainga": "UA-49880327-14",
+  "updated": "2020-09-15T04:39:15Z",
+  "id": "ai-platform-training",
+  "duration": 0,
+  "title": "AI Platform Notebooks Training",
+  "authors": "prajp, benazirfateh",
+  "summary": "In this codelab, you'll learn about training and deploying models on AI Platform. \nSpecifically you will learn how to   \n  - Train model on AI Platform Training\n   - Run hyperparameter tuning jobs\n   - Deploy model on AI Platform Prediction",
+  "source": "1ADxdnbSW3pT8HJ5JBW49iMeBN0kP3sPFBVJCkGAiCX0",
+  "theme": "cloud",
+  "status": [
+    "draft"
+  ],
+  "category": [
+    "Cloud"
+  ],
+  "tags": [
+    "data"
+  ],
+  "feedback": "https://github.com/googlecodelabs/ai-platform-training/issues",
+  "url": "ai-platform-training"
+}
