@@ -117,7 +117,7 @@ def train_evaluate(job_dir, training_dataset_path, n_estimators, max_leaf_nodes,
     #split train set to create a pseudo test or validation dataset
     X_train, X_validate, y_train, y_validate = train_test_split(X_train, y_train, test_size=0.33, stratify= y_train[model_target], random_state=42)
     
-if not hptune:
+    if not hptune:
         X_train = pd.concat([X_train, X_validate])
         y_train = pd.concat([y_train, y_validate])
 
@@ -150,7 +150,7 @@ if not hptune:
           hyperparameter_metric_tag=&#39;accuracy&#39;,
           metric_value=accuracy
         )
- # Save the model
+     # Save the model
     if not hptune:
         model_filename = &#39;model.pkl&#39;
         with open(model_filename, &#39;wb&#39;) as model_file:
