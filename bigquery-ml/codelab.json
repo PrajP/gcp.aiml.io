@@ -1,0 +1,25 @@
+{
+  "environment": "web",
+  "format": "html",
+  "prefix": "https://storage.googleapis.com",
+  "mainga": "UA-49880327-14",
+  "updated": "2020-09-17T05:40:38Z",
+  "id": "bigquery-ml",
+  "duration": 0,
+  "title": "AI Platform Notebooks",
+  "authors": "benazirfateh, prajp",
+  "summary": "In this codelab, you'll learn how to create a ML model in BigQuery ML.",
+  "source": "1CCXchdI0vnPzyEMKDWPe55BifDM4ktO8oC3XdQLdSMs",
+  "theme": "cloud",
+  "status": [
+    "draft"
+  ],
+  "category": [
+    "Cloud"
+  ],
+  "tags": [
+    "data"
+  ],
+  "feedback": "https://github.com/googlecodelabs/bigquery-ml/issues",
+  "url": "bigquery-ml"
+}

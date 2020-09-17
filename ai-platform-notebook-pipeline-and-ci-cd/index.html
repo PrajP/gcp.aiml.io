@@ -1,0 +1,678 @@
+
+<!doctype html>
+
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+  <meta name="theme-color" content="#4F7DC9">
+  <meta charset="UTF-8">
+  <title>AI Platform Notebooks</title>
+  <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Source+Code+Pro:400|Roboto:400,300,400italic,500,700|Roboto+Mono">
+  <link rel="stylesheet" href="//fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://storage.googleapis.com/codelab-elements/codelab-elements.css">
+  <style>
+    .success {
+      color: #1e8e3e;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <google-codelab-analytics gaid="UA-49880327-14"></google-codelab-analytics>
+  <google-codelab codelab-gaid=""
+                  id="ai-platform-notebook-pipeline-and-ci-cd"
+                  title="AI Platform Notebooks"
+                  environment="web"
+                  feedback-link="https://github.com/googlecodelabs/ai-platform-notebook-pipeline-and-ci-cd/issues">
+    
+      <google-codelab-step label="Introduction" duration="0">
+        <p>In this lab, you will build, deploy, and run a KFP pipeline that orchestrates <strong>Cloud AI Platform</strong> services to train, tune, and deploy a <strong>scikit-learn</strong> model.</p>
+<aside class="special"><p>Note: This codelab uses HIPAA certified AI Platform Notebooks.</p>
+</aside>
+<h2 is-upgraded><strong>Y</strong><strong>ou&#39;ll learn how to</strong></h2>
+<ul>
+<li>Create an AI Platform Pipeline Instance. </li>
+<li>Build and deploy an  ML Pipeline on Google Cloud</li>
+<li>Setting up Kubeflow Pipeline using AI Platform Pipelines</li>
+<li>Deploying and running a Kubeflow Pipeline on AI Platform Pipelines</li>
+<li>Track experiments and runs</li>
+<li>Analyzing model evaluation metrics</li>
+<li>Continuous training</li>
+</ul>
+<p><strong>What you&#39;ll need</strong></p>
+<p>To complete this lab, you need:</p>
+<ul>
+<li>A project on Google Cloud Platform</li>
+</ul>
+<p>If you don&#39;t have a GCP Project, follow <a href="https://cloud.google.com/resource-manager/docs/creating-managing-projects" target="_blank">these steps</a> to create a new GCP Project.</p>
+<p>This codelab is focused on AI Platform Notebooks. Non-relevant concepts and code blocks are glossed over and are provided for you to simply copy and paste.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Create an AI Platform Pipeline Instance" duration="0">
+        <h2 is-upgraded>Step 1: Create an AI Platform Pipelines instance</h2>
+<p>Navigate to <a href="https://pantheon.corp.google.com/ai-platform/pipelines/clusters" target="_blank">AI Platform Pipelines section</a> of your Cloud Console and click <strong>New Instance</strong>. </p>
+<p>Then click <strong>CONFIGURE</strong> on the Kubeflow Pipelines page. </p>
+<p>Select the zone. </p>
+<p>Check <strong>Allow access to the following Cloud APIs</strong>, leave the name as is, and then click <strong>Create Cluster</strong>.</p>
+<p class="image-container"><img style="width: 624.00px" src="img/a457f76edb83e1b1.png"></p>
+<p>This will create a Google Kubernetes Engine cluster in your specified zone. This should take 2-3 minutes to complete. Wait for the cluster to finish before proceeding to the next step. </p>
+<p>When the cluster creation is complete, do the following:</p>
+<ol type="1" start="1">
+<li>Keep namespace as default for this lab or change it for<a href="https://www.kubeflow.org/docs/pipelines/multi-user/#how-are-resources-separated" target="_blank"> multi-user isolation</a>.</li>
+<li>Change the pipeline instance name to desired name. </li>
+<li>Check the <strong>Terms of Service</strong> box.</li>
+</ol>
+<p>Leave other settings unchanged, and then click <strong>Deploy</strong>. You will see the individual services of KFP deployed to your GKE cluster. </p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Setting up Kubeflow Pipeline using AI Platform Pipelines" duration="0">
+        <p>The workflow implemented by the pipeline is defined using a Python based Domain Specific Language (DSL). The pipeline&#39;s DSL is in the  amyris_pipeline.py file that we will generate below.</p>
+<p>The pipeline&#39;s DSL has been designed to avoid hardcoding any environment specific settings like file paths or connection strings. These settings are provided to the pipeline code through a set of environment variables.</p>
+<p>The pipeline uses a mix of custom and pre-build components.</p>
+<ul>
+<li>Pre-build components. The pipeline uses the following pre-build components that are included with the KFP distribution:</li>
+<li><a href="https://github.com/kubeflow/pipelines/tree/0.2.5/components/gcp/ml_engine/train" target="_blank">AI Platform Training component</a></li>
+<li><a href="https://github.com/kubeflow/pipelines/tree/0.2.5/components/gcp/ml_engine/deploy" target="_blank">AI Platform Deploy component</a></li>
+<li>Custom components. The pipeline uses two custom helper components that encapsulate functionality not available in any of the pre-build components. The components are implemented using the KFP SDK&#39;s <a href="https://www.kubeflow.org/docs/pipelines/sdk/lightweight-python-components/" target="_blank">Lightweight Python Components</a> mechanism. The code for the components is in the helper_components.py file:</li>
+<li><strong>Retrieve Best Run</strong>. This component retrieves a tuning metric and hyperparameter values for the best run of an AI Platform Training hyperparameter tuning job.</li>
+<li><strong>Evaluate Model</strong>. This component evaluates a <em>sklearn</em> trained model using a provided metric and a testing dataset.</li>
+</ul>
+<h2 is-upgraded>Step 1: Create a folder to save the pipeline DSL script. </h2>
+<p>Continue using the AI Platform notebook used in earlier labs. Next, create the train, validation and test files using AI Platform notebooks for this lab. Now, create folders for pipeline set up. </p>
+<pre><code>PIPELINE_FOLDER = &#39;pipeline&#39;
+os.makedirs(PIPELINE_FOLDER, exist_ok=True)</code></pre>
+<h2 is-upgraded>Step 2: Copy the test file to GCS. </h2>
+<pre><code>data = pd.read_excel(INPUT_FILE,sheet_name=&#39;data&#39;)
+meta_data = pd.read_excel(INPUT_FILE, sheet_name=&#39;meta data&#39;)
+
+numeric_vars = ((data.dtypes == &#39;float64&#39;) | (data.dtypes == &#39;int64&#39;)) &amp; (meta_data[&#39;variable type&#39;] == &#39;independent&#39;).values
+numeric_x_data = data[data.columns[numeric_vars]]
+model_target = &#39;Run_Performance&#39;
+y_data = data[[model_target]] 
+meta_data = meta_data.set_index(&#39;name&#39;)
+
+#maintain class balance
+X_train, X_test, y_train, y_test = train_test_split(numeric_x_data, y_data, test_size=0.25, stratify = y_data[model_target], random_state=42)
+
+#split train set to create a pseudo test or validation dataset
+X_train, X_validate, y_train, y_validate = train_test_split(X_train, y_train, test_size=0.33, stratify= y_train[model_target], random_state=42)
+
+testData =X_test.join(y_test)
+DATA_TEST_ROOT=&#39;{}/data/testing&#39;.format(ARTIFACT_STORE) 
+input_file_csv = &#39;test_amyris&#39;
+cmd = &#34;testData.to_csv(&#39;{}/{}.csv&#39;, index=False)&#34;.format(DATA_TEST_ROOT, input_file_csv)
+eval(cmd)
+</code></pre>
+<p>Please make sure that the value of TESTING_FILE_PATH is set as follows </p>
+<pre><code>TESTING_FILE_PATH= &#39;{}/{}/{}&#39;.format(DATA_ROOT, &#39;testing&#39;, &#39;test_amyris.csv&#39;)</code></pre>
+<h2 is-upgraded>Step 3: Create the pipeline </h2>
+<p>The following code creates a pipeline and stitches together the different components together to create a DAG. </p>
+<pre><code>%%writefile ./pipeline/amyris_pipeline.py
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the &#34;License&#34;);
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an &#34;AS IS&#34; BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+&#34;&#34;&#34;KFP pipeline orchestrating Cloud AI Platform services.&#34;&#34;&#34;
+
+import os
+
+from helper_components import evaluate_model
+from helper_components import retrieve_best_run
+from jinja2 import Template
+import kfp
+from kfp.components import func_to_container_op
+from kfp.dsl.types import Dict
+from kfp.dsl.types import GCPProjectID
+from kfp.dsl.types import GCPRegion
+from kfp.dsl.types import GCSPath
+from kfp.dsl.types import String
+from kfp.gcp import use_gcp_secret
+
+# Defaults and environment settings
+BASE_IMAGE = os.getenv(&#39;BASE_IMAGE&#39;)
+TRAINER_IMAGE = os.getenv(&#39;TRAINER_IMAGE&#39;)
+RUNTIME_VERSION = os.getenv(&#39;RUNTIME_VERSION&#39;)
+PYTHON_VERSION = os.getenv(&#39;PYTHON_VERSION&#39;)
+COMPONENT_URL_SEARCH_PREFIX = os.getenv(&#39;COMPONENT_URL_SEARCH_PREFIX&#39;)
+USE_KFP_SA = os.getenv(&#39;USE_KFP_SA&#39;)
+INPUT_FILE = &#39;&lt;..../Anonymized_Fermentation_Data_final.xlsx&gt;&#39;
+TESTING_FILE_PATH = &#39;&lt;.../data/testing/test_amyris.csv&gt;&#39;
+
+HYPERTUNE_SETTINGS = &#34;&#34;&#34;
+{
+    &#34;hyperparameters&#34;:  {
+        &#34;goal&#34;: &#34;MAXIMIZE&#34;,
+        &#34;maxTrials&#34;: 3,
+        &#34;maxParallelTrials&#34;: 3,
+        &#34;hyperparameterMetricTag&#34;: &#34;accuracy&#34;,
+        &#34;enableTrialEarlyStopping&#34;: True,
+        &#34;algorithm&#34;: &#34;RANDOM_SEARCH&#34;,
+        &#34;params&#34;: [
+            {
+                &#34;parameterName&#34;: &#34;n_estimators&#34;,
+                &#34;type&#34;: &#34;INTEGER&#34;,
+                &#34;minValue&#34;: 10,
+                &#34;maxValue&#34;: 200,
+                &#34;scaleType&#34;: &#34;UNIT_LINEAR_SCALE&#34;
+            },
+            {
+                &#34;parameterName&#34;: &#34;max_leaf_nodes&#34;,
+                &#34;type&#34;: &#34;INTEGER&#34;,
+                &#34;minValue&#34;: 10,
+                &#34;maxValue&#34;: 500,
+                &#34;scaleType&#34;: &#34;UNIT_LINEAR_SCALE&#34;
+            },
+            {
+                &#34;parameterName&#34;: &#34;max_depth&#34;,
+                &#34;type&#34;: &#34;INTEGER&#34;,
+                &#34;minValue&#34;: 3,
+                &#34;maxValue&#34;: 20,
+                &#34;scaleType&#34;: &#34;UNIT_LINEAR_SCALE&#34;
+            },
+            {
+                &#34;parameterName&#34;: &#34;min_samples_split&#34;,
+                &#34;type&#34;: &#34;DISCRETE&#34;,
+                &#34;discreteValues&#34;: [2,5,10]
+            },
+            {
+                &#34;parameterName&#34;: &#34;max_features&#34;,
+                &#34;type&#34;: &#34;DOUBLE&#34;,
+                &#34;minValue&#34;: 0.5,
+                &#34;maxValue&#34;: 1.0,
+                &#34;scaleType&#34;: &#34;UNIT_LINEAR_SCALE&#34;
+            },
+            {
+                &#34;parameterName&#34;: &#34;class_weight&#34;,
+                &#34;type&#34;: &#34;CATEGORICAL&#34;,
+                &#34;categoricalValues&#34;: [ &#34;balanced&#34;, &#34;balanced_subsample&#34;]
+            },
+            {
+                &#34;parameterName&#34;: &#34;bootstrap&#34;,
+                &#34;type&#34;: &#34;CATEGORICAL&#34;,
+                &#34;categoricalValues&#34;: [ &#34;TRUE&#34;, &#34;FALSE&#34;]
+            }
+        ]
+    }
+}
+&#34;&#34;&#34;
+
+# Create component factories
+component_store = kfp.components.ComponentStore(
+    local_search_paths=None, url_search_prefixes=[COMPONENT_URL_SEARCH_PREFIX])
+
+mlengine_train_op = component_store.load_component(&#39;ml_engine/train&#39;)
+mlengine_deploy_op = component_store.load_component(&#39;ml_engine/deploy&#39;)
+retrieve_best_run_op = func_to_container_op(
+    retrieve_best_run, base_image=BASE_IMAGE)
+evaluate_model_op = func_to_container_op(evaluate_model, base_image=BASE_IMAGE)
+
+
+@kfp.dsl.pipeline(
+    name=&#39;Amyris Classifier Training&#39;,
+    description=&#39;The pipeline training and deploying the Amyris classifierpipeline_yaml&#39;
+)
+def amyris_train(project_id,
+                    region,
+                    gcs_root,
+                    evaluation_metric_name,
+                    evaluation_metric_threshold,
+                    model_id,
+                    version_id,
+                    replace_existing_version,
+                    hypertune_settings=HYPERTUNE_SETTINGS,
+                    dataset_location=&#39;US&#39;):
+    &#34;&#34;&#34;Orchestrates training and deployment of an sklearn model.&#34;&#34;&#34;
+
+    # Tune hyperparameters
+    tune_args = [
+        &#39;--training_dataset_path&#39;,INPUT_FILE,
+         &#39;--hptune&#39;, &#39;True&#39;
+    ]
+
+    job_dir = &#39;{}/{}/{}&#39;.format(gcs_root, &#39;jobdir/hypertune&#39;,
+                                kfp.dsl.RUN_ID_PLACEHOLDER)
+
+    hypertune = mlengine_train_op(
+        project_id=project_id,
+        region=region,
+        master_image_uri=TRAINER_IMAGE,
+        job_dir=job_dir,
+        args=tune_args,
+        training_input=hypertune_settings)
+
+    # Retrieve the best trial
+    get_best_trial = retrieve_best_run_op(
+            project_id, hypertune.outputs[&#39;job_id&#39;])
+
+    # Train the model on a combined training and validation datasets
+    job_dir = &#39;{}/{}/{}&#39;.format(gcs_root, &#39;jobdir&#39;, kfp.dsl.RUN_ID_PLACEHOLDER)
+
+    train_args = [
+        &#39;--training_dataset_path&#39;,INPUT_FILE,
+        &#39;--n_estimators&#39;,get_best_trial.outputs[&#39;n_estimators&#39;], 
+        &#39;--max_leaf_nodes&#39;,get_best_trial.outputs[&#39;max_leaf_nodes&#39;], 
+        &#39;--max_depth&#39;,get_best_trial.outputs[&#39;max_depth&#39;],
+        &#39;--min_samples_split&#39;,get_best_trial.outputs[&#39;min_samples_split&#39;],
+        &#39;--max_features&#39;,get_best_trial.outputs[&#39;max_features&#39;],
+        &#39;--class_weight&#39;,get_best_trial.outputs[&#39;class_weight&#39;],
+        &#39;--bootstrap&#39;,get_best_trial.outputs[&#39;bootstrap&#39;],
+        &#39;--hptune&#39;, &#39;False&#39;
+    ]
+
+    train_model = mlengine_train_op(
+        project_id=project_id,
+        region=region,
+        master_image_uri=TRAINER_IMAGE,
+        job_dir=job_dir,
+        args=train_args)
+
+    # Evaluate the model on the testing split
+    eval_model = evaluate_model_op(
+        dataset_path=TESTING_FILE_PATH,
+        model_path=str(train_model.outputs[&#39;job_dir&#39;]),
+        metric_name=evaluation_metric_name)
+
+    # Deploy the model if the primary metric is better than threshold
+    with kfp.dsl.Condition(eval_model.outputs[&#39;metric_value&#39;] &gt; evaluation_metric_threshold):
+        deploy_model = mlengine_deploy_op(
+        model_uri=train_model.outputs[&#39;job_dir&#39;],
+        project_id=project_id,
+        model_id=model_id,
+        version_id=version_id,
+        runtime_version=RUNTIME_VERSION,
+        python_version=PYTHON_VERSION,
+        replace_existing_version=replace_existing_version)
+
+    # Configure the pipeline to run using the service account defined
+      # in the user-gcp-sa k8s secret
+    if USE_KFP_SA == &#39;True&#39;:
+        kfp.dsl.get_pipeline_conf().add_op_transformer(
+              use_gcp_secret(&#39;user-gcp-sa&#39;))   </code></pre>
+<p>Copy helper_components.py. This file has some custom helper functions. Notice that we wrapped these functions into a Docker container using the func_to_container_op in the </p>
+<p> amyris_training.py file above. </p>
+<pre><code>%%writefile ./pipeline/helper_components.py
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the &#34;License&#34;);
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an &#34;AS IS&#34; BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+&#34;&#34;&#34;Helper components.&#34;&#34;&#34;
+
+from typing import NamedTuple
+
+
+def retrieve_best_run(project_id: str, job_id: str) -&gt; NamedTuple(&#39;Outputs&#39;, [(&#39;metric_value&#39;, float), (&#39;n_estimators&#39;, int),
+                            (&#39;max_leaf_nodes&#39;, int), (&#39;max_depth&#39;, int), (&#39;min_samples_split&#39;, int),
+                             (&#39;max_features&#39;, float), (&#39;class_weight&#39;, str), (&#39;bootstrap&#39;, str)]):
+    &#34;&#34;&#34;Retrieves the parameters of the best Hypertune run.&#34;&#34;&#34;
+
+    from googleapiclient import discovery
+    from googleapiclient import errors
+    
+    ml = discovery.build(&#39;ml&#39;, &#39;v1&#39;)
+
+    job_name = &#39;projects/{}/jobs/{}&#39;.format(project_id, job_id)
+    request = ml.projects().jobs().get(name=job_name)
+
+    try:
+        response = request.execute()
+    except errors.HttpError as err:
+        print(err)
+    except:
+        print(&#39;Unexpected error&#39;)
+
+    print(response)
+
+    best_trial = response[&#39;trainingOutput&#39;][&#39;trials&#39;][0]
+
+    metric_value = best_trial[&#39;finalMetric&#39;][&#39;objectiveValue&#39;]
+
+    n_estimators = int(best_trial[&#39;hyperparameters&#39;][&#39;n_estimators&#39;])
+    max_leaf_nodes = int(best_trial[&#39;hyperparameters&#39;][&#39;max_leaf_nodes&#39;])
+    max_depth = int(best_trial[&#39;hyperparameters&#39;][&#39;max_depth&#39;])
+    min_samples_split = int(best_trial[&#39;hyperparameters&#39;][&#39;min_samples_split&#39;])
+    max_features = float(best_trial[&#39;hyperparameters&#39;][&#39;max_features&#39;])
+    class_weight = best_trial[&#39;hyperparameters&#39;][&#39;class_weight&#39;]
+    bootstrap = best_trial[&#39;hyperparameters&#39;][&#39;bootstrap&#39;]
+
+    return (metric_value, n_estimators, max_leaf_nodes, max_depth, min_samples_split, max_features, class_weight, bootstrap )
+
+
+def evaluate_model(dataset_path: str, model_path: str, metric_name: str) -&gt; NamedTuple(&#39;Outputs&#39;, [(&#39;metric_name&#39;, str), (&#39;metric_value&#39;, float),
+                            (&#39;mlpipeline_metrics&#39;, &#39;Metrics&#39;)]):
+    
+    &#34;&#34;&#34;Evaluates a trained sklearn model.&#34;&#34;&#34;
+    import pickle
+    import json
+    import pandas as pd
+    import subprocess
+    import sys
+
+    from sklearn.metrics import accuracy_score, recall_score
+
+    df_test = pd.read_csv(dataset_path)
+
+    X_test = df_test.drop(&#39;Run_Performance&#39;, axis=1)
+    y_test = df_test[&#39;Run_Performance&#39;]
+
+    # Copy the model from GCS
+    model_filename = &#39;model.pkl&#39;
+    gcs_model_filepath = &#39;{}/{}&#39;.format(model_path, model_filename)
+    print(gcs_model_filepath)
+    subprocess.check_call([&#39;gsutil&#39;, &#39;cp&#39;, gcs_model_filepath, model_filename],
+                        stderr=sys.stdout)
+
+    with open(model_filename, &#39;rb&#39;) as model_file:
+        model = pickle.load(model_file)
+        
+    y_hat = model.predict(X_test)
+
+    if metric_name == &#39;accuracy&#39;:
+        metric_value = accuracy_score(y_test, y_hat)
+    elif metric_name == &#39;recall&#39;:
+        metric_value = recall_score(y_test, y_hat)
+    else:
+        metric_name = &#39;N/A&#39;
+        metric_value = 0
+
+    # Export the metric
+    metrics = {
+      &#39;metrics&#39;: [{
+          &#39;name&#39;: metric_name,
+          &#39;numberValue&#39;: float(metric_value)
+      }]
+    }
+
+    return (metric_name, metric_value, json.dumps(metrics))</code></pre>
+<h2 is-upgraded>Step 4: Build base image for lightweight python components </h2>
+<p>Create a folder named base_image</p>
+<pre><code>BASE_IMAGE_FOLDER = &#39;base_image&#39;
+os.makedirs(BASE_IMAGE_FOLDER, exist_ok=True)</code></pre>
+<p>Write the Dockerfile as follows:</p>
+<pre><code>%%writefile ./$BASE_IMAGE_FOLDER/Dockerfile
+FROM gcr.io/deeplearning-platform-release/base-cpu
+RUN pip install -U fire scikit-learn==0.20.4 pandas==0.24.2 kfp==0.2.5</code></pre>
+<pre><code>IMAGE_NAME=&#39;base_image&#39;
+TAG=&#39;latest&#39;
+BASE_IMAGE=&#39;gcr.io/{}/{}:{}&#39;.format(PROJECT_ID, IMAGE_NAME, TAG)</code></pre>
+<pre><code>!gcloud builds submit --timeout 15m --tag $BASE_IMAGE base_image</code></pre>
+<h2 is-upgraded>Step 5: Configure environment settings </h2>
+<p>Before deploying to AI Platform Pipelines, the pipeline DSL has to be compiled into a pipeline runtime format, also referred to as a pipeline package. The runtime format is based on <a href="https://github.com/argoproj/argo" target="_blank">Argo Workflow</a>, which is expressed in YAML.</p>
+<p>Update the below constants with the settings reflecting your lab environment.</p>
+<ul>
+<li>REGION - the compute region for AI Platform Training and Prediction</li>
+<li>ARTIFACT_STORE - the GCS bucket created during installation of AI Platform Pipelines. The bucket name starts with the hostedkfp-default- prefix.</li>
+<li>ENDPOINT - set the ENDPOINT constant to the endpoint to your AI Platform Pipelines instance. The endpoint to the AI Platform Pipelines instance can be found on the <a href="https://console.cloud.google.com/ai-platform/pipelines/clusters" target="_blank">AI Platform Pipelines</a> page in the Google Cloud Console.</li>
+</ul>
+<p>Open the <strong><em>SETTINGS</em></strong> for your instance</p>
+<p class="image-container"><img style="width: 624.00px" src="img/824cffd26f2d13da.png"></p>
+<ol type="1" start="1">
+<li>Use the value of the host variable in the <strong><em>Connect to this Kubeflow Pipelines instance from a Python client via Kubeflow Pipelines SDK </em></strong>section of the <em>SETTINGS</em> window.</li>
+</ol>
+<p class="image-container"><img style="width: 624.00px" src="img/8467000e42c18c3f.png"></p>
+<pre><code>REGION = &#39;&lt;your selected region&gt;&#39;
+ENDPOINT = &#39;xxxxxxxx-dot-us-central2.pipelines.googleusercontent.com&#39;
+PROJECT_ID = !(gcloud config get-value core/project)
+PROJECT_ID = PROJECT_ID[0]</code></pre>
+<h2 is-upgraded>Step 6: Compile Pipeline </h2>
+<p>You can compile the DSL using an API from the <strong>KFP SDK</strong> or using the <strong>KFP</strong> compiler.</p>
+<p>To compile the pipeline DSL using the <strong>KFP</strong> compiler, set the pipeline&#39;s compile time settings:</p>
+<p>The pipeline can run using a security context of the GKE default node pool&#39;s service account or the service account defined in the user-gcp-sa secret of the Kubernetes namespace hosting Kubeflow Pipelines. If you want to use the user-gcp-sa service account you change the value of USE_KFP_SA to True.</p>
+<p>Note that the default AI Platform Pipelines configuration does not define the user-gcp-sa secret.</p>
+<pre><code>USE_KFP_SA = False
+
+COMPONENT_URL_SEARCH_PREFIX = &#39;https://raw.githubusercontent.com/kubeflow/pipelines/0.2.5/components/gcp/&#39;
+RUNTIME_VERSION = &#39;1.15&#39;
+PYTHON_VERSION = &#39;3.7&#39;
+
+%env USE_KFP_SA={USE_KFP_SA}
+%env BASE_IMAGE={BASE_IMAGE}
+%env TRAINER_IMAGE={TRAINER_IMAGE}
+%env COMPONENT_URL_SEARCH_PREFIX={COMPONENT_URL_SEARCH_PREFIX}
+%env RUNTIME_VERSION={RUNTIME_VERSION}
+%env PYTHON_VERSION={PYTHON_VERSION}
+%env INPUT_FILE={INPUT_FILE}
+%env TESTING_FILE_PATH={TESTING_FILE_PATH}</code></pre>
+<p>Now that we have built and pushed all the pre-reqs containers, we can compile the KF pipeline into a yaml file using the `dsl-compile` command and referencing the python file containing the pipeline description as command line argument. </p>
+<pre><code>!dsl-compile --py pipeline/amyris_pipeline.py --output amyris_pipeline.yaml</code></pre>
+<pre><code>!head amyris_pipeline.yaml </code></pre>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Deploying and running a Kubeflow Pipeline on AI Platform Pipelines" duration="0">
+        <h2 is-upgraded>Step 1: Deploy the pipeline</h2>
+<p>Once the pipeline has been compiled into its yaml description, we can upload it to the cluster using the kfp command. </p>
+<pre><code>PIPELINE_NAME=&#39;&lt;pipeline_name&gt;&#39;
+
+!kfp --endpoint $ENDPOINT pipeline upload \
+-p $PIPELINE_NAME \
+amyris_pipeline.yaml</code></pre>
+<p>  And verify that it has been correctly uploaded.</p>
+<pre><code>!kfp --endpoint $ENDPOINT pipeline list</code></pre>
+<p>Set your pipeline id accordingly. </p>
+<pre><code>PIPELINE_ID=&#39;&lt;pipeline ID retrieved from above&gt;&#39;</code></pre>
+<pre><code>EXPERIMENT_NAME = &#39;Amyris_Experiment&#39;
+RUN_ID = &#39;Run_001&#39;
+EVALUATION_METRIC = &#39;accuracy&#39;
+EVALUATION_METRIC_THRESHOLD = &#39;0.69&#39;
+MODEL_ID = &#39;&lt;model name&gt;&#39;
+VERSION_ID = &#39;&lt;version no.&gt;&#39;
+REPLACE_EXISTING_VERSION = &#39;True&#39;
+
+GCS_STAGING_PATH = &#39;{}/staging&#39;.format(ARTIFACT_STORE)</code></pre>
+<p>where</p>
+<ul>
+<li>EXPERIMENT_NAME is set to the experiment used to run the pipeline. You can choose any name you want. If the experiment does not exist it will be created by the command</li>
+<li>RUN_ID is the name of the run. You can use an arbitrary name</li>
+<li>PIPELINE_ID is the id of your pipeline. Use the value retrieved by the kfp pipeline list command</li>
+<li>GCS_STAGING_PATH is the URI to the GCS location used by the pipeline to store intermediate files. By default, it is set to the staging folder in your artifact store.</li>
+<li>REGION is a compute region for AI Platform Training and Prediction.</li>
+</ul>
+<h2 is-upgraded>Step 2: Run the pipeline. </h2>
+<pre><code>!kfp --endpoint $ENDPOINT run submit \
+-e $EXPERIMENT_NAME \
+-r $RUN_ID \
+-p $PIPELINE_ID \
+project_id=$PROJECT_ID \
+gcs_root=$GCS_STAGING_PATH \
+region=$REGION \
+evaluation_metric_name=$EVALUATION_METRIC \
+evaluation_metric_threshold=$EVALUATION_METRIC_THRESHOLD \
+model_id=$MODEL_ID \
+version_id=$VERSION_ID \
+replace_existing_version=$REPLACE_EXISTING_VERSION</code></pre>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Track experiments and runs" duration="0">
+        <h2 is-upgraded>Compare Runs</h2>
+<p>Two or  more runs can be compared to find out how they differ in terms of configuration parameters, final value of evaluation metric etc. In order to compare runs, select 2 or more runs and click <strong>Compare Runs</strong> in the PIpelines dashboard. </p>
+<h2 is-upgraded>Artifacts </h2>
+<p>Click on Artifacts in the left panel on the Pipelines Dashboard. Here, all the artifacts of a pipeline runs are listed. </p>
+<p class="image-container"><img style="width: 624.00px" src="img/cf199feef47d318d.png"></p>
+<h2 is-upgraded>ML Metadata</h2>
+<p>Click on each component in the Pipeline and select the ML Metadata tab. </p>
+<p>Note:</p>
+<p>ML Metadata is a foundation of TFX. KFP is not yet fully integrated with ML Metadata.</p>
+<p>What you see in KFP UI comes from more sources than just ML Metadata. KFP metadata management will be migrated to ML Metadata but it is still work in progress. </p>
+<p>If tracking experiments and their associated metadata is very crucial, there are two choices at present. </p>
+<ol type="1" start="1">
+<li>One can use TFX Python function based components to wrap the sklearn code. This approach lets you automatically capture inputs and outputs in ML Metadata similarly to how standard TFX components do that. </li>
+<li>If you want to stick to KFP  you would need to explicitly instrument your KFP components to interface with ML Metadata. More information can be found <a href="https://www.kubeflow.org/docs/components/metadata/" target="_blank">here</a>.</li>
+</ol>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="CI/CD" duration="0">
+        <h2 is-upgraded>Step 0: Create a folder to save the kfp-cli dockerfile. </h2>
+<pre><code>KFP_CLI_FOLDER = &#39;kfp-cli&#39; 
+os.makedirs(KFP_CLI_FOLDER, exist_ok=True)</code></pre>
+<h2 is-upgraded>Step 1: Creating the KFP-CLI builder </h2>
+<p>Create a folder named kfp-cli and copy the following Dockerfile.</p>
+<pre><code>%%writefile ./kfp-cli/Dockerfile
+FROM gcr.io/deeplearning-platform-release/base-cpu
+RUN pip install kfp==0.2.5
+ENTRYPOINT [&#34;/bin/bash&#34;]</code></pre>
+<p>Build the image and push it to your project&#39;s Container Registry</p>
+<pre><code>IMAGE_NAME=&#39;kfp-cli&#39;
+TAG=&#39;latest&#39;
+IMAGE_URI=&#39;gcr.io/{}/{}:{}&#39;.format(PROJECT_ID, IMAGE_NAME, TAG)</code></pre>
+<pre><code>!gcloud builds submit --timeout 15m --tag {IMAGE_URI} kfp-cli</code></pre>
+<h2 is-upgraded>Step 2: Cloudbuild</h2>
+<p>Review the cloudbuild.yaml file to understand how the CI/CD workflow is implemented and how environment specific settings are abstracted using <strong>Cloud Build</strong> variables.</p>
+<p>The CI/CD workflow automates the steps you walked through manually during lab-02-kfp-pipeline:</p>
+<ol type="1" start="1">
+<li>Builds the trainer image</li>
+<li>Builds the base image for custom components</li>
+<li>Compiles the pipeline</li>
+<li>Uploads the pipeline to the KFP environment</li>
+<li>Pushes the trainer and base images to your project&#39;s <strong>Container Registry</strong></li>
+</ol>
+<p>Although the KFP backend supports pipeline versioning, this feature has not yet been enabled through the <strong>KFP</strong> CLI. As a temporary workaround, in the <strong>Cloud Build</strong> configuration a value of the TAG_NAME variable is appended to the name of the pipeline.</p>
+<p>The <strong>Cloud Build</strong> workflow configuration uses both standard and custom <a href="https://cloud.google.com/cloud-build/docs/cloud-builders" target="_blank">Cloud Build builders</a>. The custom builder encapsulates <strong>KFP CLI</strong>.</p>
+<p>Write the cloudbuild.yaml file. </p>
+<pre><code>%%writefile cloudbuild.yaml
+
+# Copyright 2019 Google Inc. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the &#34;License&#34;);
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#            http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an &#34;AS IS&#34; BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Submits a Cloud Build job that builds and deploys
+# the pipelines and pipelines components 
+#
+# Build and deploy a TFX pipeline. This is an interim solution till tfx CLI fully 
+# supports automated building and deploying.
+# 
+
+steps:
+# Build the trainer image
+- name: &#39;gcr.io/cloud-builders/docker&#39;
+  args: [&#39;build&#39;, &#39;-t&#39;, &#39;gcr.io/$PROJECT_ID/$_TRAINER_IMAGE_NAME:$TAG_NAME&#39;, &#39;.&#39;]
+  dir: $_PIPELINE_FOLDER/train_image
+  
+# Build the base image for lightweight components
+- name: &#39;gcr.io/cloud-builders/docker&#39;
+  args: [&#39;build&#39;, &#39;-t&#39;, &#39;gcr.io/$PROJECT_ID/$_BASE_IMAGE_NAME:$TAG_NAME&#39;, &#39;.&#39;]
+  dir: $_PIPELINE_FOLDER/base_image
+
+# Compile the pipeline
+- name: &#39;gcr.io/$PROJECT_ID/kfp-cli&#39;
+  args:
+  - &#39;-c&#39;
+  - |
+    dsl-compile --py $_PIPELINE_DSL --output $_PIPELINE_PACKAGE
+  env:
+  - &#39;BASE_IMAGE=gcr.io/$PROJECT_ID/$_BASE_IMAGE_NAME:$TAG_NAME&#39;
+  - &#39;TRAINER_IMAGE=gcr.io/$PROJECT_ID/$_TRAINER_IMAGE_NAME:$TAG_NAME&#39;
+  - &#39;RUNTIME_VERSION=$_RUNTIME_VERSION&#39;
+  - &#39;PYTHON_VERSION=$_PYTHON_VERSION&#39;
+  - &#39;COMPONENT_URL_SEARCH_PREFIX=$_COMPONENT_URL_SEARCH_PREFIX&#39;
+  - &#39;USE_KFP_SA=$_USE_KFP_SA&#39;
+  dir: $_PIPELINE_FOLDER/pipeline
+  
+ # Upload the pipeline
+- name: &#39;gcr.io/$PROJECT_ID/kfp-cli&#39;
+  args:
+  - &#39;-c&#39;
+  - |
+    kfp --endpoint $_ENDPOINT pipeline upload -p ${_PIPELINE_NAME}_$TAG_NAME $_PIPELINE_PACKAGE
+  dir: $_PIPELINE_FOLDER/pipeline
+
+
+# Push the images to Container Registry 
+images: [&#39;gcr.io/$PROJECT_ID/$_TRAINER_IMAGE_NAME:$TAG_NAME&#39;, &#39;gcr.io/$PROJECT_ID/$_BASE_IMAGE_NAME:$TAG_NAME&#39;]</code></pre>
+<h2 is-upgraded>Step 3: Manually triggering CI/CD runs</h2>
+<p>You can manually trigger <strong>Cloud Build</strong> runs using the gcloud builds submit command.</p>
+<pre><code>SUBSTITUTIONS=&#34;&#34;&#34;
+_ENDPOINT={},\
+_TRAINER_IMAGE_NAME=trainer_image,\
+_BASE_IMAGE_NAME=base_image,\
+TAG_NAME=latest,\
+_PIPELINE_FOLDER=.,\
+_PIPELINE_DSL=amyris_pipeline.py,\
+_PIPELINE_PACKAGE=amyris_pipeline.yaml,\
+_PIPELINE_NAME=amyris_pipelineFinal,\
+_RUNTIME_VERSION=1.15,\
+_PYTHON_VERSION=3.7,\
+_USE_KFP_SA=True,\
+_COMPONENT_URL_SEARCH_PREFIX=https://raw.githubusercontent.com/kubeflow/pipelines/0.2.5/components/gcp/
+&#34;&#34;&#34;.format(ENDPOINT).strip()</code></pre>
+<pre><code>!gcloud builds submit . --config cloudbuild.yaml --substitutions {SUBSTITUTIONS}</code></pre>
+<p>When this build finishes, you will see a new pipeline created with the name &lt;<code>_PIPELINE_NAME&gt;_&lt;TAG_NAME&gt;. </code></p>
+<p>You can now create a run by supplying parameters. </p>
+<h2 is-upgraded>Step 4: Set up a github integration. </h2>
+<p>In this exercise you integrate your CI/CD workflow with <strong>GitHub</strong>, using <a href="https://github.com/marketplace/google-cloud-build" target="_blank">Cloud Build GitHub App</a>. You will set up a trigger that starts the CI/CD workflow when a new tag is applied to the <strong>GitHub</strong> repo managing the pipeline source code. You will use a fork of this repo as your source GitHub repository.</p>
+<h3 is-upgraded>Create a Cloud Build trigger</h3>
+<p>Connect the fork you created in the previous step to your Google Cloud project and create a trigger following the steps in the <a href="https://cloud.google.com/cloud-build/docs/create-github-app-triggers" target="_blank">Creating GitHub app trigger</a> article. Use the following values on the <strong>Edit trigger</strong> form:</p>
+<p class="image-container"><img style="width: 624.00px" src="img/83308c2881338ce.png"></p>
+<p>Use the following values for the substitution variables:</p>
+<p class="image-container"><img style="width: 624.00px" src="img/9a42a5663efaa86e.png"></p>
+<h3 is-upgraded>Trigger the build</h3>
+<p>To start an automated build <a href="https://help.github.com/en/github/administering-a-repository/creating-releases" target="_blank">create a new release of the repo in GitHub</a>. Alternatively, you can start the build by applying a tag using git.</p>
+<p>&gt;git tag [TAG NAME]</p>
+<p>&gt;git push origin --tags</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Congrats!" duration="0">
+        <p>You&#39;ve done a lot in this lab 👏👏👏</p>
+<p>To recap, you&#39;ve learned how to:</p>
+<ul>
+<li>Create an AI Platform Pipeline Instance. </li>
+<li>Build and deploy an  ML Pipeline on Google Cloud</li>
+<li>Setting up Kubeflow Pipeline using AI Platform Pipelines</li>
+<li>Deploying and running a Kubeflow Pipeline on AI Platform Pipelines</li>
+<li>Track experiments and runs</li>
+<li>Analyzing model evaluation metrics</li>
+<li>Continuous training</li>
+</ul>
+
+
+      </google-codelab-step>
+    
+  </google-codelab>
+
+  <script src="https://storage.googleapis.com/codelab-elements/native-shim.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/custom-elements.min.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/prettify.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/codelab-elements.js"></script>
+  <script src="//support.google.com/inapp/api.js"></script>
+
+</body>
+</html>

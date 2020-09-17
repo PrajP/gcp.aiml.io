@@ -1,0 +1,220 @@
+
+<!doctype html>
+
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+  <meta name="theme-color" content="#4F7DC9">
+  <meta charset="UTF-8">
+  <title>AI Platform Notebooks</title>
+  <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Source+Code+Pro:400|Roboto:400,300,400italic,500,700|Roboto+Mono">
+  <link rel="stylesheet" href="//fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://storage.googleapis.com/codelab-elements/codelab-elements.css">
+  <style>
+    .success {
+      color: #1e8e3e;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <google-codelab-analytics gaid="UA-49880327-14"></google-codelab-analytics>
+  <google-codelab codelab-gaid=""
+                  id="bigquery-ml"
+                  title="AI Platform Notebooks"
+                  environment="web"
+                  feedback-link="https://github.com/googlecodelabs/bigquery-ml/issues">
+    
+      <google-codelab-step label="Introduction" duration="0">
+        <p>In this lab, you will build a ML model in BigQuery ML.</p>
+<h2 is-upgraded>You&#39;ll learn how to</h2>
+<ul>
+<li>Upload data in BQ. </li>
+<li>Create, evaluate and predict using BQML. </li>
+</ul>
+<h2 is-upgraded>What you&#39;ll need</h2>
+<p>To complete this lab, you need:</p>
+<ol type="1" start="1">
+<li>A Google Cloud Project. </li>
+<li>BigQuery is automatically enabled in new projects. To activate BigQuery in a pre-existing project, go to APIs &amp; Services and enable the BigQuery API.</li>
+</ol>
+<p>This codelab is focused on Biguery ML. Non-relevant concepts and code blocks are glossed over and are provided for you to simply copy and paste.</p>
+<p>If you don&#39;t have a GCP Project, follow <a href="https://cloud.google.com/resource-manager/docs/creating-managing-projects" target="_blank">these steps</a> to create a new GCP Project.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="BigQuery ML" duration="0">
+        <p>BigQuery ML lets you create and execute machine learning models in BigQuery using standard SQL queries. BigQuery ML democratizes machine learning by letting SQL practitioners build models using existing SQL tools and skills. BigQuery ML increases development speed by eliminating the need to move data.</p>
+<p>BigQuery ML functionality is available by using:</p>
+<ul>
+<li>The Google Cloud Console</li>
+<li>The bq command-line tool</li>
+<li>The BigQuery REST API</li>
+<li>An external tool such as a Jupyter notebook or business intelligence platform</li>
+</ul>
+<p>In this codelab, we will be using Google Cloud Console. </p>
+<h2 is-upgraded>Step 1: Create dataset in BQ </h2>
+<p>The first step is to create a BigQuery dataset to store your model. To create your dataset, follow these steps:</p>
+<ol type="1" start="1">
+<li>Go to the BigQuery page in the Cloud Console.<br><a href="https://console.cloud.google.com/bigquery" target="_blank">Go to the BigQuery page</a></li>
+<li>In the navigation panel, in the <strong>Resources</strong> section, click your project name.</li>
+<li>On the right side, in the details panel, click <strong>Create dataset</strong>.<br><img alt="Create dataset" style="width: 624.00px" src="img/6cfdb152ce376da6.png"></li>
+<li>On the <strong>Create dataset</strong> page, for <strong>Dataset ID</strong>, enter &lt;dataset ID&gt;.</li>
+<li>Leave all of the other default settings in place and click <strong>Create dataset</strong>.</li>
+</ol>
+<h2 is-upgraded>Step 2: Prepare tables to be uploaded in BQ</h2>
+<p>Using the AI Platform notebook, create training, validation and test files using AI Platform notebooks for this lab.</p>
+<pre><code>imputer = SimpleImputer(missing_values=np.nan, strategy=&#39;median&#39;)
+scaler = StandardScaler()
+
+pipe = Pipeline([(&#39;imputer&#39;,imputer), 
+                 (&#39;scaler&#39;, scaler)
+                ])
+_X_train = pd.DataFrame(pipe.fit_transform(X_train))
+_X_test = pd.DataFrame(pipe.fit_transform(X_test))
+_X_validate = pd.DataFrame(pipe.fit_transform(X_validate))
+
+X_train_rem_cols = X_train.drop([&#39;Cap_Feedstock_Solids_End__percent&#39;, &#39;Cap_Dead_Cell_Layer_End__percent&#39;], axis=1)
+X_test_rem_cols = X_test.drop([&#39;Cap_Feedstock_Solids_End__percent&#39;, &#39;Cap_Dead_Cell_Layer_End__percent&#39;], axis=1)
+X_validate_rem_cols = X_validate.drop([&#39;Cap_Feedstock_Solids_End__percent&#39;, &#39;Cap_Dead_Cell_Layer_End__percent&#39;], axis=1)
+
+
+_X_train.columns = X_train_rem_cols.columns
+_X_train.index = X_train_rem_cols.index
+
+_X_test.columns = X_test_rem_cols.columns
+_X_test.index = X_test_rem_cols.index
+
+_X_validate.columns = X_validate_rem_cols.columns
+_X_validate.index = X_validate_rem_cols.index
+
+
+traindf = _X_train.join(y_train)
+testdf = _X_test.join(y_test)
+validatedf = _X_validate.join(y_validate)
+
+## write data to csv files 
+
+traindf.to_csv(&#39;bq_train.csv&#39;, index=False)
+testdf.to_csv(&#39;bq_test.csv&#39;, index=False)
+validatedf.to_csv(&#39;bq_validate.csv&#39;, index=False)
+</code></pre>
+<p>Download these 3 files on your laptop. Next we will upload them to Bigquery.  </p>
+<h2 is-upgraded>Step 3: Upload data into BQ </h2>
+<p>Next,  upload preprocessed data into BQ. Make sure to select options to upload, select file from your computer, file format as CSV and auto detect the schema and input parameters. Add a suitable table name.</p>
+<p>Click on the DataSet and then click on <strong>Create Table. </strong></p>
+<p class="image-container"><img style="width: 624.00px" src="img/90241ed096643091.png"></p>
+<h2 is-upgraded>Step 2: Create a model </h2>
+<p>You can create and train a logistic regression model using the <a href="https://cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-create" target="_blank">CREATE MODEL</a> statement with the option &#39;LOGISTIC_REG&#39;. The following query uses a CREATE MODEL statement to train a new binary logistic regression model on the training data.</p>
+<p>The <a href="https://cloud.google.com/bigquery-ml/docs/reference/standard-sql/bigqueryml-syntax-create" target="_blank">CREATE MODEL</a> statement trains a model using the training data in the SELECT statement.</p>
+<p>The <a href="https://cloud.google.com/bigquery-ml/docs/reference/standard-sql/bigqueryml-syntax-create#model_option_list" target="_blank">OPTIONS clause</a> specifies the model type and training options. Here, the <a href="https://cloud.google.com/bigquery-ml/docs/reference/standard-sql/bigqueryml-syntax-create#model_type" target="_blank">LOGISTIC_REG</a> option specifies a logistic regression model type. It is not necessary to specify a binary logistic regression model versus a multiclass logistic regression model: BigQuery ML can determine which to train based on the number of unique values in the label column.</p>
+<p>The <a href="https://cloud.google.com/bigquery-ml/docs/reference/standard-sql/bigqueryml-syntax-create#input_label_cols" target="_blank">input_label_cols</a> option specifies which column in the SELECT statement to use as the label column. Here, the label column is Run_Performance, so the model will learn which of the two values of Run_Performance is most likely based on the other values present in each row.</p>
+<p>The <a href="https://cloud.google.com/bigquery-ml/docs/reference/standard-sql/bigqueryml-syntax-create#auto_class_weights" target="_blank">&#39;auto_class_weights=TRUE&#39;</a> option balances the class labels in the training data. By default, the training data is unweighted. If the labels in the training data are imbalanced, the model may learn to predict the most popular class of labels more heavily. Class weights balance the class labels by calculating the weights for each class in inverse proportion to the frequency of that class.</p>
+<p>The <a href="https://cloud.google.com/bigquery-ml/docs/reference/standard-sql/bigqueryml-syntax-create#query_statement" target="_blank">SELECT statement</a> queries the view from <a href="https://cloud.google.com/bigquery-ml/docs/logistic-regression-prediction#step_two_examine_your_data" target="_blank">Step 2</a>. This view contains only the columns containing feature data for training the model. The WHERE clause filters the rows in input_view so that only those rows belonging to the training dataframe are included in the training data.</p>
+<p>To run the query that creates your logistic regression model, complete the following steps:</p>
+<ol type="1" start="1">
+<li>In the Cloud Console, click the <strong>Compose new query</strong> button.</li>
+<li>Enter the following standard SQL query in the <strong>Query editor</strong> text area.</li>
+</ol>
+<pre><code>CREATE OR REPLACE MODEL
+  `amyris.amyris_model_lr`
+OPTIONS
+  ( model_type=&#39;LOGISTIC_REG&#39;,
+    auto_class_weights=TRUE,
+    data_split_method=&#39;NO_SPLIT&#39;,
+    input_label_cols=[&#39;Run_Performance&#39;],
+    max_iterations=15) AS
+SELECT
+  *
+FROM
+  `amyris.amyris_train`
+</code></pre>
+<ol type="1" start="3">
+<li>Click <strong>Run</strong>.</li>
+<li>In the navigation panel, in the <strong>Resources</strong> section, expand <strong>[PROJECT_ID] &gt; &lt;dataset ID&gt;</strong> and then click <strong>&lt;model_name&gt;</strong>.</li>
+<li>Click the <strong>Schema</strong> tab. The model schema lists the attributes that BigQuery ML used to perform logistic regression. The schema should look like the following:<img style="width: 624.00px" src="img/766e099b09b0aa5a.png"></li>
+</ol>
+<h2 is-upgraded>Step 3: Evaluate model </h2>
+<p>After creating your model, evaluate the performance of the model using the <a href="https://cloud.google.com/bigquery-ml/docs/reference/standard-sql/bigqueryml-syntax-evaluate" target="_blank">ML.EVALUATE</a> function. The ML.EVALUATE function evaluates the predicted values against the actual data.</p>
+<p>The query to evaluate the model is as follows:</p>
+<pre><code>SELECT
+  *
+FROM
+  ML.EVALUATE (MODEL `amyris.amyris_model_lr`,
+    (
+    SELECT
+      *
+    FROM
+      `amyris.amyris_validate`
+    )
+  )</code></pre>
+<p>The ML.EVALUATE function takes the model trained in <a href="https://cloud.google.com/bigquery-ml/docs/logistic-regression-prediction#step_one_create_your_dataset" target="_blank">Step 1</a> and evaluation data returned by a SELECT subquery. The function returns a single row of statistics about the model. This query uses data from input_view as evaluation data. The WHERE clause filters the input data so that the subquery contains only rows in the evaluation dataframe.</p>
+<p>When the query is complete, click the <strong>Results</strong> tab below the query text area. The results should look like the following:<img style="width: 624.00px" src="img/a2db09c73289c5a9.png"></p>
+<p>Because you performed a logistic regression, the results include the following columns:</p>
+<ul>
+<li>precision</li>
+<li>recall</li>
+<li>accuracy</li>
+<li>f1_score</li>
+<li>log_loss</li>
+<li>roc_auc</li>
+</ul>
+<h2 is-upgraded>Step 4: Predict using the model </h2>
+<p>To identify the income bracket to which a particular respondent belongs, use the <a href="https://cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-predict" target="_blank">ML.PREDICT</a> function. The following query predicts the income bracket of every respondent in the prediction dataframe.</p>
+<pre><code>SELECT
+  *
+FROM
+  ML.PREDICT (MODEL `amyris.amyris_model_lr`,
+    (
+    SELECT
+      *
+    FROM
+      `amyris.amyris_test`
+     )
+  )</code></pre>
+<p>The <a href="https://cloud.google.com/bigquery-ml/docs/reference/standard-sql/bigqueryml-syntax-predict" target="_blank">ML.PREDICT</a> function predicts results using your model and the data from input_view, filtered to include only rows in the &#39;prediction&#39; dataframe. The top-most SELECT statement retrieves the output of the ML.PREDICT function.</p>
+<p>When the query is complete, click the <strong>Results</strong> tab below the query text area. The results should look like the following:</p>
+<p class="image-container"><img style="width: 751.00px" src="img/ac73d3b146c71088.png"></p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Cleaning Up" duration="0">
+        <p>To avoid incurring charges to your Google Cloud Platform account for the resources used in this tutorial:</p>
+<ul>
+<li>You can delete the project you created.</li>
+<li>Or you can keep the project and delete the dataset.</li>
+</ul>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Congrats!" duration="0">
+        <p>You&#39;ve done a lot in this lab 👏👏👏</p>
+<p>To recap, you&#39;ve learned how to:</p>
+<ul>
+<li>Create an AI Platform Pipeline Instance. </li>
+<li>Build and deploy an  ML Pipeline on Google Cloud</li>
+<li>Setting up Kubeflow Pipeline using AI Platform Pipelines</li>
+<li>Deploying and running a Kubeflow Pipeline on AI Platform Pipelines</li>
+<li>Track experiments and runs</li>
+<li>Analyzing model evaluation metrics</li>
+<li>Continuous training</li>
+</ul>
+
+
+      </google-codelab-step>
+    
+  </google-codelab>
+
+  <script src="https://storage.googleapis.com/codelab-elements/native-shim.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/custom-elements.min.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/prettify.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/codelab-elements.js"></script>
+  <script src="//support.google.com/inapp/api.js"></script>
+
+</body>
+</html>

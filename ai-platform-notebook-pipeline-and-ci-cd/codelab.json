@@ -1,0 +1,25 @@
+{
+  "environment": "web",
+  "format": "html",
+  "prefix": "https://storage.googleapis.com",
+  "mainga": "UA-49880327-14",
+  "updated": "2020-09-17T05:31:12Z",
+  "id": "ai-platform-notebook-pipeline-and-ci-cd",
+  "duration": 0,
+  "title": "AI Platform Notebooks",
+  "authors": "prajp, benazirfateh",
+  "summary": "In this codelab, you'll learn how to build and deploy ML pipelines on GCP.\nSpecifically you will learn how to   \n   - Set up a Kubeflow pipeline on AI platform. \n   - Deploy and run your ML model on AI Platform  pipelines.\n   - Set up continuous integration using Cloudbuild.",
+  "source": "1ZtRjvUIsH56e79IHY_KS3Om6lhqBfNtCcwyTdcC4pYM",
+  "theme": "cloud",
+  "status": [
+    "draft"
+  ],
+  "category": [
+    "Cloud"
+  ],
+  "tags": [
+    "data"
+  ],
+  "feedback": "https://github.com/googlecodelabs/ai-platform-notebook-pipeline-and-ci-cd/issues",
+  "url": "ai-platform-notebook-pipeline-and-ci-cd"
+}
