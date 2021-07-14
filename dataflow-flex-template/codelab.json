@@ -1,0 +1,25 @@
+{
+  "environment": "web",
+  "format": "html",
+  "prefix": "https://storage.googleapis.com",
+  "mainga": "UA-49880327-14",
+  "updated": "2021-07-14T05:53:29Z",
+  "id": "dataflow-flex-template",
+  "duration": 0,
+  "title": "Introduction to Dataflow Flex Templates",
+  "authors": "prajp",
+  "summary": "In this codelab, you'll learn how to create a Dataflow Flex Template from a pipeline.",
+  "source": "1IZj58bOfDgDyJ8nOSh53bIBPQvYGc3I7hQ29HwAwkrs",
+  "theme": "cloud",
+  "status": [
+    "draft"
+  ],
+  "category": [
+    "cloud"
+  ],
+  "tags": [
+    "data"
+  ],
+  "feedback": "https://github.com/googlecodelabs/dataflow-flex-template/issues",
+  "url": "dataflow-flex-template"
+}

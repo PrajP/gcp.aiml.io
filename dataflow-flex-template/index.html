@@ -1,0 +1,312 @@
+
+<!doctype html>
+
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+  <meta name="theme-color" content="#4F7DC9">
+  <meta charset="UTF-8">
+  <title>Introduction to Dataflow Flex Templates</title>
+  <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Source+Code+Pro:400|Roboto:400,300,400italic,500,700|Roboto+Mono">
+  <link rel="stylesheet" href="//fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://storage.googleapis.com/codelab-elements/codelab-elements.css">
+  <style>
+    .success {
+      color: #1e8e3e;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <google-codelab-analytics gaid="UA-49880327-14"></google-codelab-analytics>
+  <google-codelab codelab-gaid=""
+                  id="dataflow-flex-template"
+                  title="Introduction to Dataflow Flex Templates"
+                  environment="web"
+                  feedback-link="https://github.com/googlecodelabs/dataflow-flex-template/issues">
+    
+      <google-codelab-step label="Introduction" duration="0">
+        <p>In this lab, you will build a Dataflow Flex Template.</p>
+<h2 is-upgraded>You&#39;ll learn how to</h2>
+<ul>
+<li>Create a simple Dataflow pipeline using Python.</li>
+<li>Run the job using the Dataflow pipeline. </li>
+<li>Create a Dataflow Flex template from the existing pipeline.</li>
+<li>Run a Dataflow Job using the Flex template. </li>
+</ul>
+<h2 is-upgraded>What you&#39;ll need</h2>
+<p>To complete this lab, you need:</p>
+<ol type="1" start="1">
+<li>A Google Cloud Project. </li>
+<li>BigQuery is automatically enabled in new projects. To activate BigQuery in a pre-existing project, go to APIs &amp; Services and enable the BigQuery API.</li>
+<li>Cloud Storage</li>
+<li>Dataflow</li>
+<li>Container Registry</li>
+<li>Cloud Build</li>
+</ol>
+<p>This codelab is focused on Dataflow Flex Template. Non-relevant concepts and code blocks are glossed over and are provided for you to simply copy and paste.</p>
+<p>If you don&#39;t have a GCP Project, follow <a href="https://cloud.google.com/resource-manager/docs/creating-managing-projects" target="_blank">these steps</a> to create a new GCP Project.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Dataflow Flex Template" duration="0">
+        <p>Dataflow templates allow you to stage your pipelines on Google Cloud and <a href="https://cloud.google.com/dataflow/docs/templates/executing-templates" target="_blank">run them</a> using the Google Cloud Console, the gcloud command-line tool, or REST API calls.</p>
+<p>Classic templates are staged as execution graphs on Cloud Storage while Flex Templates package the pipeline as a Docker image and stage these images on your project&#39;s Container Registry. You can use one of the <a href="https://cloud.google.com/dataflow/docs/templates/provided-templates" target="_blank">Google-provided templates</a> or <a href="https://cloud.google.com/dataflow/docs/templates/creating-templates" target="_blank">create your own</a>.</p>
+<p>Templates provide you with additional benefits compared to non-templated Dataflow deployment, such as:</p>
+<ul>
+<li>You can run your pipelines without the development environment and associated dependencies that are common with non-templated deployment. This is useful for scheduling recurring batch jobs.</li>
+<li>Templates separate the pipeline construction (performed by developers) from the running of the pipeline. Hence, there&#39;s no need to recompile the code every time the pipeline is run.</li>
+<li>Runtime parameters allow you to customize the running of the pipeline.</li>
+<li>Non-technical users can run templates with the Google Cloud Console, gcloud command-line tool, or the REST API.</li>
+</ul>
+<p><strong>Flex Templates. </strong></p>
+<p>Developers package the pipeline into a Docker image and then use the gcloud command-line tool to build and save the Flex Template spec file in Cloud Storage.</p>
+<p>Flex Templates bring more flexibility over classic templates by allowing minor variations of Dataflow jobs to be launched from a single template and allowing the use of any source or sink I/O.  </p>
+<p>The execution graph for Flex Templates is dynamically built based on runtime parameters provided by the user when the template is executed. This means that when you use Flex Templates, you can make minor variations to accomplish different tasks with the same underlying template, such as changing the source or sink file formats.</p>
+<p>In this codelab, we will be using Google Cloud Console. </p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Set Up" duration="0">
+        <h2 is-upgraded>Step 1a: Download the starter code</h2>
+<p>Run the following command to get Dataflow Python Examples from <a href="https://github.com/GoogleCloudPlatform/professional-services/blob/master/examples/dataflow-python-examples/README.md" target="_blank">Google Cloud&#39;s professional services GitHub</a>:</p>
+<pre><code>gsutil -m cp -R gs://spls/gsp290/dataflow-python-examples .</code></pre>
+<p>Now set a variable equal to your project id, replacing &lt;YOUR-PROJECT-ID&gt; with your lab Project ID:</p>
+<pre><code>export PROJECT=&lt;YOUR-PROJECT-ID&gt;
+gcloud config set project $PROJECT</code></pre>
+<h2 is-upgraded>Step 1b: Create Cloud Storage Bucket</h2>
+<p>Use the make bucket command to create a new regional bucket in the us-central1 region within your project:</p>
+<pre><code>gsutil mb -c regional -l us-central1 gs://$PROJECT</code></pre>
+<p>Use the gsutil command to copy files into the Cloud Storage bucket you just created:</p>
+<h2 is-upgraded>Step 1c: Copy Files to Your Bucket</h2>
+<h2 is-upgraded>Use the gsutil command to copy files into the Cloud Storage bucket you just created:</h2>
+<pre><code>gsutil cp gs://spls/gsp290/data_files/usa_names.csv gs://$PROJECT/data_files/
+gsutil cp gs://spls/gsp290/data_files/head_usa_names.csv gs://$PROJECT/data_files/</code></pre>
+<h2 is-upgraded>Step 1d: Create dataset in BQ </h2>
+<p>In this step you create a BigQuery dataset called lake to store your data. To create your dataset, follow these steps:</p>
+<ol type="1" start="1">
+<li>Go to the BigQuery page in the Cloud Console.<br><a href="https://console.cloud.google.com/bigquery" target="_blank">Go to the BigQuery page</a></li>
+<li>In the navigation panel, in the <strong>Resources</strong> section, click your project name.</li>
+<li>On the right side, in the details panel, click <strong>Create dataset</strong>.<br><img alt="Create dataset" style="width: 624.00px" src="img/6cfdb152ce376da6.png"></li>
+<li>On the <strong>Create dataset</strong> page, for <strong>Dataset ID</strong>, enter &lt;dataset ID&gt;.</li>
+<li>Leave all of the other default settings in place and click <strong>Create dataset</strong>.</li>
+</ol>
+<p>OR </p>
+<p>Use bq command: </p>
+<pre><code>gsutil mb -c regional -l us-central1 gs://$PROJECT</code></pre>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Build a Dataflow Pipeline" duration="0">
+        <h2 is-upgraded>Step 2a: Build a Dataflow Pipeline</h2>
+<p>In this section you will create an append-only Dataflow which will ingest data into the BigQuery table. You can use the built-in code editor which will allow you to view and edit the code in the Google Cloud console.</p>
+<p class="image-container"><img style="width: 214.38px" src="img/bac2391813aa0947.png"></p>
+<p>Open Code Editor</p>
+<p>Navigate to the source code by clicking on the Open Editor icon in Cloud Shell:</p>
+<p class="image-container"><img style="width: 388.25px" src="img/cc7a38d6fc6386f1.png"></p>
+<p>If prompted click on <strong>Open in a New Window</strong>. It will open the code editor in a new window.</p>
+<h2 is-upgraded>Step 2b: Data Ingestion</h2>
+<p>You will now build a Dataflow pipeline with a TextIO source and a BigQueryIO destination to ingest data into BigQuery. More specifically, it will:</p>
+<ul>
+<li>Ingest the files from Cloud Storage.</li>
+<li>Filter out the header row in the files.</li>
+<li>Convert the lines read to dictionary objects.</li>
+<li>Output the rows to BigQuery.</li>
+</ul>
+<h2 is-upgraded>Step 2c: Review pipeline python code</h2>
+<p>In the Code Editor navigate to dataflow-python-examples &gt; dataflow_python_examples and open the data_ingestion.py file. Read through the comments in the file, which explain what the code is doing. This code will populate the data in BigQuery.</p>
+<p class="image-container"><img style="width: 624.00px" src="img/b4758f510f3f9bff.png"></p>
+<h2 is-upgraded>Step 2b: Implement and Run the Dataflow Pipeline</h2>
+<p>Return to your Cloud Shell session for this step. You will now do a bit of set up for the required python libraries. </p>
+<p>Run the following to set up the python environment:</p>
+<pre><code>cd dataflow-python-examples/
+# Here we set up the python environment.
+# Pip is a tool, similar to maven in the java world
+sudo pip install virtualenv
+
+#Dataflow requires python 3.7
+virtualenv -p python3 venv
+
+source venv/bin/activate
+pip install apache-beam[gcp]==2.27.0</code></pre>
+<p>You will run the Dataflow pipeline in the cloud. The following will spin up the workers required, and shut them down when complete:</p>
+<pre><code>python dataflow_python_examples/data_ingestion.py --project=$PROJECT --region=us-central1 --runner=DataflowRunner --staging_location=gs://$PROJECT/test --temp_location gs://$PROJECT/test --input gs://$PROJECT/data_files/head_usa_names.csv --save_main_session</code></pre>
+<p>Return to the Cloud Console and open the <strong>Navigation menu</strong> &gt; <strong>Dataflow</strong> to view the status of your job.</p>
+<p>Click on the name of your job to watch it&#39;s progress. Once your <strong>Job Status</strong> is <strong>Succeeded</strong>. Navigate to BigQuery (<strong>Navigation menu</strong> &gt; <strong>BigQuery</strong>) see that your data has been populated.</p>
+<p>Click on your project name to see the <strong>usa_names</strong> table under the lake dataset.</p>
+<p class="image-container"><img style="width: 256.00px" src="img/c5a1cbc32e31eb56.png"></p>
+<p>Click on the table then navigate to the Preview tab to see examples of the usa_names data.</p>
+<p><strong>Note:</strong> If you don&#39;t see the usa_names table, try refreshing the page or view the tables using the classic BigQuery UI.</p>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Convert Dataflow Pipeline into Flex Template" duration="0">
+        <h2 is-upgraded>Step 3a: Create a Cloud Storage Bucket</h2>
+<p>Use the  <a href="https://cloud.google.com/storage/docs/gsutil/commands/mb" target="_blank">gsutil mb</a> command:</p>
+<pre><code>export BUCKET=&#34;my-storage-bucket&#34;
+gsutil mb gs://$BUCKET</code></pre>
+<h2 is-upgraded>Step 3b: Download the code sample</h2>
+<ol type="1" start="1">
+<li>Download the code sample.</li>
+</ol>
+<pre><code>git clone https://github.com/GoogleCloudPlatform/python-docs-samples.git
+
+cd python-docs-samples/dataflow/flex-templates/streaming_beam
+</code></pre>
+<ol type="1" start="2">
+<li>Copy the dataflow pipeline python code data_ingestion.py to flex-templates folder.</li>
+</ol>
+<pre><code>cp ~/dataflow-python-examples/dataflow_python_examples/data_ingestion.py ~/python-docs-samples/dataflow/flex-templates/streaming_beam/data_ingestion.py
+
+cd python-docs-samples/dataflow/flex-templates/streaming_beam</code></pre>
+<ol type="1" start="3">
+<li>Set variables</li>
+</ol>
+<pre><code>export DATASET=&#34;lake&#34;
+export TABLE=&#34;usa_names_template&#34;</code></pre>
+<ol type="1" start="4">
+<li>Export the TEMPLATE_IMAGE for this tutorial.</li>
+</ol>
+<pre><code>export TEMPLATE_IMAGE=&#34;gcr.io/$PROJECT/samples/dataflow/batch-ingestion-beam:latest&#34;</code></pre>
+<h2 is-upgraded>Step 3c: Set up and Build Container Image </h2>
+<ol type="1" start="5">
+<li><h2 is-upgraded>Python only: Creating and building a container image</h2>
+</li>
+</ol>
+<ol type="1" start="1">
+<li>(Optional) Enable Kaniko cache use by default. <a href="https://cloud.google.com/build/docs/kaniko-cache" target="_blank">Kaniko</a> caches container build artifacts, so using this option speeds up subsequent builds.</li>
+</ol>
+<pre><code>gcloud config set builds/use_kaniko True</code></pre>
+<ol type="1" start="2">
+<li>(Optional) Create the Dockerfile. You can customize the Dockerfile from this tutorial. The starter file looks like the following:</li>
+</ol>
+<pre><code>  FROM gcr.io/dataflow-templates-base/python3-template-launcher-base
+
+  ARG WORKDIR=/dataflow/template
+  RUN mkdir -p ${WORKDIR}
+  WORKDIR ${WORKDIR}
+ 
+  # Due to a change in the Apache Beam base image in version 2.24, 
+  # you must install
+  # libffi-dev manually as a dependency. For more information:
+  #   https://github.com/GoogleCloudPlatform/python-docs-samples/issues/4891
+  RUN apt-get update &amp;&amp; apt-get install -y libffi-dev &amp;&amp; rm -rf /var/lib/apt/lists/*
+
+  COPY requirements.txt .
+  COPY streaming_beam.py .
+
+  ENV FLEX_TEMPLATE_PYTHON_REQUIREMENTS_FILE=&#34;${WORKDIR}/requirements.txt&#34;
+  ENV FLEX_TEMPLATE_PYTHON_PY_FILE=&#34;${WORKDIR}/data_ingestion.py&#34;
+
+  RUN pip install -U -r ./requirements.txt</code></pre>
+<p>Images starting with gcr.io/PROJECT/ are saved into your project&#39;s Container Registry, where the image is accessible to other Google Cloud products.</p>
+<ol type="1" start="3">
+<li>Build the <a href="https://docs.docker.com/" target="_blank">Docker</a> image using a <a href="https://cloud.google.com/build/docs/quickstart-build#build_using_dockerfile" target="_blank">Dockerfilewith Cloud Build</a>.</li>
+</ol>
+<pre><code>gcloud builds submit --tag $TEMPLATE_IMAGE .</code></pre>
+<h2 is-upgraded>Step 3d: Create a Flex Template</h2>
+<p>To run a template, you need to create a template spec file in a Cloud Storage containing all of the necessary information to run the job, such as the SDK information and metadata.</p>
+<p>The <a href="https://github.com/GoogleCloudPlatform/java-docs-samples/blob/master/dataflow/flex-templates/streaming_beam_sql/metadata.json" target="_blank">metadata.json</a> file in this example contains additional information for the template such as the name, description, and input parameters fields.</p>
+<ol type="1" start="1">
+<li>Make a copy of metadata.json as back up and update the metadata.json</li>
+</ol>
+<pre><code>#cd python-docs-samples/dataflow/flex-templates/streaming_beam
+</code></pre>
+<pre><code>{
+ &#34;name&#34;: &#34;Batch ingestion beam Python flex template&#34;,
+ &#34;description&#34;: &#34;Batch ingestion beam example for python flex template.&#34;,
+ &#34;parameters&#34;: [
+   {
+     &#34;name&#34;: &#34;input&#34;,
+     &#34;label&#34;: &#34;Input file.&#34;,
+     &#34;helpText&#34;: &#34;Name of the input file to consume from.&#34;,
+     &#34;regexes&#34;: [
+       &#34;gs://[^/]+/data_files/[a-zA-Z][-_.~+%a-zA-Z0-9]{2,}&#34;
+     ]
+   },
+   {
+     &#34;name&#34;: &#34;output&#34;,
+     &#34;label&#34;: &#34;BigQuery output table name.&#34;,
+     &#34;helpText&#34;: &#34;Name of the BigQuery output table name.&#34;,
+     &#34;isOptional&#34;: true,
+     &#34;regexes&#34;: [
+       &#34;[^:]+:[^.]+[.].+&#34;
+     ]
+   }
+ ]
+}
+</code></pre>
+<ol type="1" start="2">
+<li>Create a template spec file containing all of the information necessary to run the job, such as the SDK information and metadata.</li>
+</ol>
+<pre><code>export TEMPLATE_PATH=&#34;gs://$BUCKET/samples/dataflow/templates/batch-ingestion-beam.json&#34;
+</code></pre>
+<ol type="1" start="3">
+<li>Build the Flex Template.</li>
+</ol>
+<pre><code>  gcloud dataflow flex-template build $TEMPLATE_PATH \
+      --image &#34;$TEMPLATE_IMAGE&#34; \
+      --sdk-language &#34;PYTHON&#34; \
+      --metadata-file &#34;metadata.json&#34;
+</code></pre>
+<p>The template is now available through the template file in the Cloud Storage location that you specified.</p>
+<h2 is-upgraded>Step 3d: Running a Flex Template Pipeline</h2>
+<p>You can now run the Apache Beam pipeline in Dataflow by referring to the template file and passing the template <a href="https://cloud.google.com/dataflow/docs/guides/specifying-exec-params#setting-other-cloud-dataflow-pipeline-options" target="_blank">parameters</a> required by the pipeline.</p>
+<ol type="1" start="1">
+<li>Run the template</li>
+</ol>
+<pre><code>  export REGION=&#34;us-central1&#34;
+
+  gcloud dataflow flex-template run &#34;streaming-beam-`date +%Y%m%d-%H%M%S`&#34; \
+    --template-file-gcs-location &#34;$TEMPLATE_PATH&#34; \
+    --parameters input_subscription=&#34;projects/$PROJECT_ID/subscriptions/$SUBSCRIPTION&#34; \
+    --parameters output_table=&#34;$PROJECT:$DATASET.$TABLE&#34; \
+    --region &#34;$REGION&#34; </code></pre>
+<p>After you execute the command to run the Flex Template, the Dataflow returns a Job ID with the job status Queued. It might take several minutes before the job status reaches Running and you can access the job graph.</p>
+<ol type="1" start="2">
+<li>Check the results in BigQuery by running the following query:</li>
+</ol>
+<pre><code>bq query --use_legacy_sql=false &#39;SELECT * FROM `&#39;&#34;$PROJECT.$DATASET.$TABLE&#34;&#39;`&#39;</code></pre>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Cleaning Up" duration="0">
+        <p>To avoid incurring charges to your Google Cloud Platform account for the resources used in this tutorial:</p>
+<ul>
+<li>You can delete the project you created.</li>
+<li>Or you can keep the project and delete the dataset, <a href="https://cloud.google.com/dataflow/docs/guides/templates/using-flex-templates#cleaning_up" target="_blank">flex template resources</a>.</li>
+</ul>
+
+
+      </google-codelab-step>
+    
+      <google-codelab-step label="Congrats!" duration="0">
+        <p>You&#39;ve done a lot in this lab 👏👏👏</p>
+<p>To recap, you&#39;ve learned how to:</p>
+<ul>
+<li>Create a Dataflow Pipeline. </li>
+<li>Build and deploy a Dataflow Pipeline on Google Cloud</li>
+<li>Building a Dataflow Flex Template</li>
+<li>Deploying and running a Dataflow Pipeline using Flex Template</li>
+</ul>
+
+
+      </google-codelab-step>
+    
+  </google-codelab>
+
+  <script src="https://storage.googleapis.com/codelab-elements/native-shim.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/custom-elements.min.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/prettify.js"></script>
+  <script src="https://storage.googleapis.com/codelab-elements/codelab-elements.js"></script>
+  <script src="//support.google.com/inapp/api.js"></script>
+
+</body>
+</html>
