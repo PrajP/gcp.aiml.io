@@ -97,7 +97,12 @@ gsutil cp gs://spls/gsp290/data_files/head_usa_names.csv gs://$PROJECT/data_file
 </ol>
 <p>OR </p>
 <p>Use bq command: </p>
-<pre><code>gsutil mb -c regional -l us-central1 gs://$PROJECT</code></pre>
+<pre><code>export REGION=&#34;us-central1&#34;
+DATASET_ID=&#34;lake&#34;
+bq --location=$REGION mk \
+--dataset \
+$PROJECT:$DATASET_ID
+ </code></pre>
 
 
       </google-codelab-step>
@@ -261,13 +266,13 @@ export TABLE=&#34;usa_names_template&#34;</code></pre>
 <ol type="1" start="1">
 <li>Run the template</li>
 </ol>
-<pre><code>  export REGION=&#34;us-central1&#34;
+<pre><code>export REGION=&#34;us-central1&#34;
+DATA_BUCKET=&#34;gs://&#34;$BUCKET&#34;/data_files/usa_names.csv&#34;
 
-  gcloud dataflow flex-template run &#34;streaming-beam-`date +%Y%m%d-%H%M%S`&#34; \
-    --template-file-gcs-location &#34;$TEMPLATE_PATH&#34; \
-    --parameters input_subscription=&#34;projects/$PROJECT_ID/subscriptions/$SUBSCRIPTION&#34; \
-    --parameters output_table=&#34;$PROJECT:$DATASET.$TABLE&#34; \
-    --region &#34;$REGION&#34; </code></pre>
+gcloud dataflow flex-template run &#34;batch-ingestion-`date +%Y%m%d-%H%M%S`&#34; \
+--template-file-gcs-location &#34;$TEMPLATE_PATH&#34; \
+--parameters input=$DATA_BUCKET \
+--parameters output=&#34;$PROJECT:$DATASET.$TABLE&#34;</code></pre>
 <p>After you execute the command to run the Flex Template, the Dataflow returns a Job ID with the job status Queued. It might take several minutes before the job status reaches Running and you can access the job graph.</p>
 <ol type="1" start="2">
 <li>Check the results in BigQuery by running the following query:</li>
